@@ -10,10 +10,13 @@ import javafx.scene.shape.Shape;
 import javafx.stage.Stage;
 import javafx.scene.Parent;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * GUI created in part by following this tutorial:
  * JavaFX Game: Connect4 by Almas Biam,
- * Timestamps: 0:50 - 7:00, ...,
+ * Timestamps: 0:50 - 7:00, 8:20 - ,
  * URL: https://youtu.be/B5H_t0A_C14?si=PBOI7srskGaINjvI
  */
 public class GUI extends Application
@@ -23,10 +26,15 @@ public class GUI extends Application
     private static int   _rows      = 6;
     private static int   _cols      = 7;
 
+    // spacing
+    private static double _colMargin = (double) _tileSize / (_cols + 1);
+    private static double _rowMargin = (double) _tileSize / (_rows + 1);
+
     // colors: check out Oracle's JavaFX documentation for options
-    private static Color _gridColor   = Color.MIDNIGHTBLUE;
-    private static Color _playerColor = Color.FIREBRICK;
-    private static Color _AIColor     = Color.ORANGE;
+    private static Color _gridColor    = Color.MIDNIGHTBLUE;
+    private static Color _playerColor  = Color.FIREBRICK;
+    private static Color _AIColor      = Color.ORANGE;
+    private static Color _colHighlight = Color.LIGHTYELLOW;
 
     /**
      * Main method
@@ -46,6 +54,7 @@ public class GUI extends Application
         stage.setTitle("Connect Four with Minimax & Alpha-Beta Pruning");
         stage.setScene(new Scene(createContent()));
         stage.getIcons().addAll(makeIcon(16), makeIcon(32), makeIcon(64));
+        stage.setResizable(false);
 
         stage.show();
     }
@@ -59,6 +68,7 @@ public class GUI extends Application
         Shape grid = makeGrid();
 
         root.getChildren().add(grid);
+        root.getChildren().addAll(makeColumns());
 
         return root;
     }
@@ -71,10 +81,6 @@ public class GUI extends Application
     {
         // make a background rectangle that is larger than the space needed for the rows/cols
         Shape grid = new Rectangle((_cols + 1) * _tileSize, (_rows + 1) * _tileSize);
-
-        // Calculate even margin between circles
-        double colMargin = (double) _tileSize / (_cols + 1);
-        double rowMargin = (double) _tileSize / (_rows + 1);
 
         // Rip holes in the shape we just created to make the circle slots
         for (int row = 0; row < _rows; row++)
@@ -89,8 +95,8 @@ public class GUI extends Application
                 circle.setCenterY((double) _tileSize / 2);
 
                 // create margin around circle
-                circle.setTranslateX(col * (_tileSize + colMargin) + colMargin);
-                circle.setTranslateY(row * (_tileSize + rowMargin) + rowMargin);
+                circle.setTranslateX(col * (_tileSize + _colMargin) + _colMargin);
+                circle.setTranslateY(row * (_tileSize + _rowMargin) + _rowMargin);
 
                 // remove circle from rectangle to make Connect Four grid
                 grid = Shape.subtract(grid, circle);
@@ -100,6 +106,30 @@ public class GUI extends Application
         grid.setFill(_gridColor);
 
         return grid;
+    }
+
+    private List<Rectangle> makeColumns()
+    {
+        List<Rectangle> colList = new ArrayList<>();
+
+        for (int col = 0; col < _cols; col++)
+        {
+            Rectangle rect = new Rectangle((_tileSize), ((_rows + 1) * _tileSize));
+
+            rect.setTranslateX(col * (_tileSize + _colMargin) + _colMargin);
+
+            // col color animation
+            rect.setFill(Color.TRANSPARENT);
+            rect.setOnMouseEntered(event -> {
+                rect.setFill(_colHighlight);
+                rect.setOpacity(0.5);
+            });
+            rect.setOnMouseExited(event -> rect.setFill(Color.TRANSPARENT));
+
+            colList.add(rect);
+        }
+
+        return colList;
     }
 
     /**
