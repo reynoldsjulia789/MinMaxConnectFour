@@ -1,16 +1,9 @@
 import javafx.application.Application;
-import javafx.geometry.Rectangle2D;
 import javafx.scene.Scene;
-import javafx.scene.SnapshotParameters;
-import javafx.scene.image.Image;
 import javafx.scene.image.PixelWriter;
 import javafx.scene.image.WritableImage;
 import javafx.scene.layout.Pane;
-import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
-import javafx.scene.paint.CycleMethod;
-import javafx.scene.paint.LinearGradient;
-import javafx.scene.paint.Stop;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.shape.Shape;
@@ -23,7 +16,7 @@ import javafx.scene.Parent;
  * Timestamps: 0:50 - 7:00, ...,
  * URL: https://youtu.be/B5H_t0A_C14?si=PBOI7srskGaINjvI
  */
-public class Main extends Application
+public class GUI extends Application
 {
     // sizing
     private static int   _tileSize  = 80;
