@@ -30,9 +30,10 @@ IntelliJ: open the project as a Maven project, then run src/Launcher.java.
 
 HOW TO PLAY
 -----------
-- Click a column to drop your disc (red) into it. Gravity places it in the
-  lowest open slot. Clicking a full column flashes it red and does nothing.
-- The AI (orange) then picks its move automatically.
+- By default you play red against an AI agent playing orange.
+- Click a column to drop your disc into it. Gravity places it in the lowest
+  open slot. Clicking a full column flashes it red and does nothing.
+- The agent then picks its move automatically.
 - The first player to connect four discs horizontally, vertically, or
   diagonally wins. If the board fills with no winner, the game is a draw.
 - When the game ends, a banner announces the result with "Play Again" and
@@ -44,11 +45,19 @@ CONFIGURING M, N, AND d
 All settings are in the "Game Settings" panel on the right side of the window.
 No source code changes are needed.
 
-    Setting       Range    Default
-    Rows (M)      4 - 12   6
-    Columns (N)   4 - 12   7
-    Depth (d)     1 - 12   4
-    First move    Player / AI   Player
+    Setting       Range                         Default
+    Rows (M)      4 - 12                        6
+    Columns (N)   4 - 12                        7
+    Red           Human or any agent, + depth d Human
+    Orange        Human or any agent, + depth d Akiva's Agent, d = 4
+    First move    Red / Orange                  Red
+
+Each side has its own depth d (1 - 12), so agents can play each other at
+different depths. The depth box is disabled when a side is Human.
+
+Available agents: Akiva's Agent, Julia's Agent, and Opponent Harness (see
+below). Any combination works: human vs agent, agent vs agent, or even
+human vs human.
 
 Settings can only be changed between rounds: before the first disc is placed,
 or after a game ends. Press "New Game" (or "Play Again" on the result banner)
@@ -63,24 +72,53 @@ There are no command-line parameters or configuration files.
 
 EXAMPLE
 -------
-To play one game on an 8 x 9 board at depth 6 with the AI moving first:
+To play one game on an 8 x 9 board against Julia's Agent at depth 6, with the
+agent moving first:
 
     1. mvn javafx:run
-    2. In Game Settings, set Rows = 8, Columns = 9, Depth = 6, First move = AI
+    2. In Game Settings, set Rows = 8, Columns = 9, Red = Human,
+       Orange = Julia's Agent with d = 6, First move = Orange
     3. Click "New Game"
+
+
+ADDING AN AGENT
+---------------
+Agents implement the Agent interface (src/Agent.java):
+
+    String getName();
+    int chooseColumn(InputHandler.Disc[][] board, InputHandler.Disc me);
+
+"me" is the color the agent is playing that game (RED or ORANGE), so the same
+agent can play either side. To make a new agent selectable, add one line to
+src/AgentRegistry.java. Any agent that throws an exception or returns an
+invalid or full column forfeits the game.
+
+
+OUTSIDE AIs (OPPONENT HARNESS)
+------------------------------
+To plug in an AI written by someone else, edit only
+src/OpponentAI/OpponentHarness.java (instructions are at the top of that
+file), then choose "Opponent Harness" for either side. The harness receives
+the board as int[row][col] with row 0 at the top: 0 = empty, 1 = its own
+discs, 2 = the other side's discs. It returns the column to play.
 
 
 RECORDED DATA
 -------------
-- The "AI Response Times" panel shows the time the AI spent choosing each move
-  (search time only; animation and human thinking time are excluded), plus a
-  summary at the end of each game.
+- The "Game Log" panel lists every move. Agent moves show the time the agent
+  spent choosing (search time only; animation and human thinking time are
+  excluded). Each game ends with an average/maximum time summary per agent.
 - Each finished game is appended as one row to results.csv in the folder the
   program was launched from (the project root when using mvn javafx:run):
 
-    timestamp,rows,cols,depth,first_player,result,ai_moves,avg_ai_ms,max_ai_ms
+    timestamp,rows,cols,first,red,red_depth,orange,orange_depth,
+    winner,winner_name,forfeit,red_moves,red_avg_ms,red_max_ms,
+    orange_moves,orange_avg_ms,orange_max_ms
 
-  "result" is AI win, Human win, or Draw.
+  "winner" is Red, Orange, or Draw; "red"/"orange" name who played each side.
+  Depth and timing columns are blank for a human side. If results.csv has a
+  header from an older version, it is renamed to results-old-<time>.csv and a
+  new file is started.
 
 
 KNOWN ISSUES AND LIMITATIONS

@@ -1,0 +1,16 @@
+timestamp,rows,cols,depth,first_player,result,ai_moves,avg_ai_ms,max_ai_ms
+2026-11-10 09:55:16,6,7,4,AI,AI win,4,0,0
+2026-11-10 09:57:06,6,7,4,AI,AI win,4,0,0
+2026-11-10 10:01:54,12,12,12,Human,AI win,4,0,0
+2026-11-10 10:02:17,6,7,12,Human,Human win,3,0,0
+2026-11-10 10:19:36,6,7,4,Opponent AI,Opponent AI,AI win,4,0,0,4,0,0
+2026-11-10 10:19:42,6,7,4,Opponent AI,Opponent AI,AI win,4,0,0,4,0,0
+2026-11-10 10:19:54,6,7,4,Opponent AI,Opponent AI,Opponent win,10,0,0,11,0,0
+2026-11-10 10:20:25,6,7,4,Opponent AI,Opponent AI,AI win,4,0,0,4,0,0
+2026-11-10 10:20:33,6,7,4,Opponent AI,Opponent AI,Opponent win,6,0,0,7,2,17
+2026-11-10 10:20:40,6,7,4,Opponent AI,Opponent AI,AI win,5,0,0,5,0,0
+2026-11-10 10:20:46,6,7,4,Opponent AI,Opponent AI,AI win,4,0,0,4,0,0
+2026-11-10 10:20:56,6,7,4,Opponent AI,Opponent AI,Opponent win,9,0,0,10,0,0
+2026-11-10 10:21:02,6,7,4,Opponent AI,Opponent AI,AI win,4,0,0,4,0,0
+2026-11-10 10:21:12,6,7,4,Opponent AI,Opponent AI,AI win,5,0,0,5,0,0
+2026-11-10 10:21:24,6,7,4,Opponent AI,Opponent AI,Opponent win,8,0,0,9,0,0

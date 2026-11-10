@@ -1,3 +1,6 @@
+import java.util.ArrayList;
+import java.util.List;
+
 import javafx.animation.FillTransition;
 import javafx.animation.TranslateTransition;
 import javafx.application.Application;
@@ -27,11 +30,10 @@ import javafx.scene.shape.Rectangle;
 import javafx.scene.shape.Shape;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
+import javafx.scene.text.TextAlignment;
 import javafx.stage.Stage;
 import javafx.util.Duration;
-
-import java.util.ArrayList;
-import java.util.List;
+import javafx.util.StringConverter;
 
 /**
  * GUI created by following this tutorial, modifications made to fit needs:
@@ -48,7 +50,9 @@ public class GUI extends Application
     private static final int     DEFAULT_ROWS          = 6;
     private static final int     DEFAULT_COLS          = 7;
     private static final int     DEFAULT_DEPTH         = 4;
-    private static final boolean DEFAULT_PLAYER_STARTS = true;
+    private static final String  DEFAULT_RED           = AgentRegistry.HUMAN;
+    private static final String  DEFAULT_ORANGE        = AgentRegistry.firstAgent();
+    private static final InputHandler.Disc DEFAULT_FIRST = InputHandler.Disc.RED;
 
     // settings limits
     private static final int MIN_SIZE  = 4;  // must fit four in a row
@@ -64,8 +68,8 @@ public class GUI extends Application
 
     // colors: check out Oracle's JavaFX documentation for options
     private static final Color _gridColor    = Color.MIDNIGHTBLUE;
-    private static final Color _playerColor  = Color.FIREBRICK;
-    private static final Color _AIColor      = Color.ORANGE;
+    private static final Color _redColor     = Color.FIREBRICK;
+    private static final Color _orangeColor  = Color.ORANGE;
     private static final Color _colHighlight = Color.LIGHTYELLOW;
     private static final Color _errorColor   = Color.RED;
 
@@ -82,6 +86,7 @@ public class GUI extends Application
     private Pane     _discRoot;
     private VBox     _gameOverBanner;
     private Label    _resultLabel;
+    private Label    _detailLabel;
     private VBox     _sidePanel;
     private TextArea _logArea;
 
@@ -89,8 +94,11 @@ public class GUI extends Application
     private VBox                _settingsBox;
     private Spinner<Integer>    _rowsSpinner;
     private Spinner<Integer>    _colsSpinner;
-    private Spinner<Integer>    _depthSpinner;
-    private ChoiceBox<String>   _firstMoveChoice;
+    private ChoiceBox<String>   _redChoice;
+    private Spinner<Integer>    _redDepthSpinner;
+    private ChoiceBox<String>   _orangeChoice;
+    private Spinner<Integer>    _orangeDepthSpinner;
+    private ChoiceBox<InputHandler.Disc> _firstMoveChoice;
 
     // mechanics
     private InputHandler _input;
@@ -131,10 +139,11 @@ public class GUI extends Application
      */
     private void startNewGame()
     {
-        int     rows         = _rowsSpinner.getValue();
-        int     cols         = _colsSpinner.getValue();
-        int     depth        = _depthSpinner.getValue();
-        boolean playerStarts = _firstMoveChoice.getValue().equals("Player");
+        int rows = _rowsSpinner.getValue();
+        int cols = _colsSpinner.getValue();
+
+        InputHandler.Side red    = makeSide(_redChoice.getValue(),    _redDepthSpinner.getValue());
+        InputHandler.Side orange = makeSide(_orangeChoice.getValue(), _orangeDepthSpinner.getValue());
 
         applyBoardSize(rows, cols);
 
@@ -142,7 +151,19 @@ public class GUI extends Application
         _sidePanel.setPrefHeight((_rows + 1) * _tileSize);
         _stage.sizeToScene();
 
-        _input.startGame(rows, cols, new MinimaxAgent(depth), playerStarts);
+        _input.startGame(rows, cols, red, orange, _firstMoveChoice.getValue());
+    }
+
+    /**
+     * @param choice a dropdown choice from AgentRegistry.choices()
+     * @param depth the search depth for an agent (ignored for a human)
+     * @return the side description for InputHandler
+     */
+    private InputHandler.Side makeSide(String choice, int depth)
+    {
+        Agent agent = AgentRegistry.create(choice, depth);
+
+        return (agent == null) ? InputHandler.Side.human() : new InputHandler.Side(agent, depth);
     }
 
     /**
@@ -186,20 +207,40 @@ public class GUI extends Application
         Label settingsTitle = new Label("Game Settings");
         settingsTitle.setFont(Font.font("System", FontWeight.BOLD, 16));
 
-        _rowsSpinner     = makeSpinner(MIN_SIZE, MAX_SIZE, DEFAULT_ROWS);
-        _colsSpinner     = makeSpinner(MIN_SIZE, MAX_SIZE, DEFAULT_COLS);
-        _depthSpinner    = makeSpinner(MIN_DEPTH, MAX_DEPTH, DEFAULT_DEPTH);
+        _rowsSpinner = makeSpinner(MIN_SIZE, MAX_SIZE, DEFAULT_ROWS);
+        _colsSpinner = makeSpinner(MIN_SIZE, MAX_SIZE, DEFAULT_COLS);
+
+        _redDepthSpinner    = makeSpinner(MIN_DEPTH, MAX_DEPTH, DEFAULT_DEPTH);
+        _redChoice          = makeSideChoice(DEFAULT_RED, _redDepthSpinner);
+        _orangeDepthSpinner = makeSpinner(MIN_DEPTH, MAX_DEPTH, DEFAULT_DEPTH);
+        _orangeChoice       = makeSideChoice(DEFAULT_ORANGE, _orangeDepthSpinner);
+
         _firstMoveChoice = new ChoiceBox<>();
-        _firstMoveChoice.getItems().addAll("Player", "AI");
-        _firstMoveChoice.setValue(DEFAULT_PLAYER_STARTS ? "Player" : "AI");
+        _firstMoveChoice.getItems().addAll(InputHandler.Disc.values());
+        _firstMoveChoice.setValue(DEFAULT_FIRST);
+        _firstMoveChoice.setConverter(new StringConverter<>()
+        {
+            @Override public String toString(InputHandler.Disc disc) { return disc == null ? "" : disc.label(); }
+            @Override public InputHandler.Disc fromString(String text) { return null; } // not editable
+        });
 
         GridPane settingsGrid = new GridPane();
         settingsGrid.setHgap(10);
         settingsGrid.setVgap(6);
         settingsGrid.addRow(0, new Label("Rows (M)"),    _rowsSpinner);
         settingsGrid.addRow(1, new Label("Columns (N)"), _colsSpinner);
-        settingsGrid.addRow(2, new Label("Depth (d)"),   _depthSpinner);
-        settingsGrid.addRow(3, new Label("First move"),  _firstMoveChoice);
+        settingsGrid.addRow(2, sideLabel("Red", _redColor),       _redChoice,    new Label("d"), _redDepthSpinner);
+        settingsGrid.addRow(3, sideLabel("Yellow", _orangeColor), _orangeChoice, new Label("d"), _orangeDepthSpinner);
+        settingsGrid.addRow(4, new Label("First move"),  _firstMoveChoice);
+
+        // before the first move, changes apply right away (no need to press New Game)
+        _rowsSpinner.valueProperty().addListener((obs, oldValue, newValue) -> onSettingChanged());
+        _colsSpinner.valueProperty().addListener((obs, oldValue, newValue) -> onSettingChanged());
+        _redChoice.valueProperty().addListener((obs, oldValue, newValue) -> onSettingChanged());
+        _redDepthSpinner.valueProperty().addListener((obs, oldValue, newValue) -> onSettingChanged());
+        _orangeChoice.valueProperty().addListener((obs, oldValue, newValue) -> onSettingChanged());
+        _orangeDepthSpinner.valueProperty().addListener((obs, oldValue, newValue) -> onSettingChanged());
+        _firstMoveChoice.valueProperty().addListener((obs, oldValue, newValue) -> onSettingChanged());
 
         Button newGame = new Button("New Game");
         newGame.setOnAction(event -> startNewGame());
@@ -211,7 +252,7 @@ public class GUI extends Application
         _settingsBox = new VBox(8, settingsTitle, settingsGrid, newGame, hint);
 
         // log
-        Label logTitle = new Label("AI Response Times");
+        Label logTitle = new Label("Game Log");
         logTitle.setFont(Font.font("System", FontWeight.BOLD, 16));
 
         _logArea = new TextArea();
@@ -230,6 +271,18 @@ public class GUI extends Application
     }
 
     /**
+     * Restarts with the new settings if no move has been made yet, so the board always matches the panel.
+     * After a game ends, changes wait for Play Again / New Game so the result stays on screen.
+     */
+    private void onSettingChanged()
+    {
+        if (_input != null && _input.isUnstarted())
+        {
+            startNewGame();
+        }
+    }
+
+    /**
      * @return an integer spinner with arrow buttons only (no typing, so values are always valid)
      */
     private Spinner<Integer> makeSpinner(int min, int max, int initial)
@@ -237,6 +290,34 @@ public class GUI extends Application
         Spinner<Integer> spinner = new Spinner<>(min, max, initial);
         spinner.setPrefWidth(80);
         return spinner;
+    }
+
+    /**
+     * @return a dropdown of "Human" plus every registered agent; the depth spinner is disabled for Human
+     */
+    private ChoiceBox<String> makeSideChoice(String initial, Spinner<Integer> depthSpinner)
+    {
+        ChoiceBox<String> choice = new ChoiceBox<>();
+
+        choice.getItems().addAll(AgentRegistry.choices());
+        choice.setPrefWidth(160);
+        choice.valueProperty().addListener((obs, oldValue, newValue) ->
+            depthSpinner.setDisable(AgentRegistry.HUMAN.equals(newValue)));
+        choice.setValue(initial);
+        depthSpinner.setDisable(AgentRegistry.HUMAN.equals(initial));
+
+        return choice;
+    }
+
+    /**
+     * @return a bold label in the side's disc color
+     */
+    private Label sideLabel(String text, Color color)
+    {
+        Label label = new Label(text);
+        label.setTextFill(color);
+        label.setFont(Font.font("System", FontWeight.BOLD, 13));
+        return label;
     }
 
     /**
@@ -267,6 +348,13 @@ public class GUI extends Application
         _resultLabel = new Label();
         _resultLabel.setFont(Font.font("System", FontWeight.BOLD, 40));
         _resultLabel.setTextFill(Color.WHITE);
+        _resultLabel.setWrapText(true); // long agent names on small boards
+        _resultLabel.setTextAlignment(TextAlignment.CENTER);
+
+        _detailLabel = new Label(); // e.g. why a side forfeited
+        _detailLabel.setTextFill(Color.LIGHTCORAL);
+        _detailLabel.setWrapText(true);
+        _detailLabel.setFont(Font.font(14));
 
         Button playAgain = new Button("Play Again");
         playAgain.setStyle("-fx-font-size: 16px;");
@@ -279,11 +367,11 @@ public class GUI extends Application
         HBox buttons = new HBox(20, playAgain, exit);
         buttons.setAlignment(Pos.CENTER);
 
-        Label settingsHint = new Label("Change board size or depth in the side panel before playing again.");
+        Label settingsHint = new Label("Change players, depth, or board size in the side panel before playing again.");
         settingsHint.setTextFill(Color.LIGHTGRAY);
         settingsHint.setWrapText(true);
 
-        _gameOverBanner = new VBox(25, _resultLabel, buttons, settingsHint);
+        _gameOverBanner = new VBox(25, _resultLabel, _detailLabel, buttons, settingsHint);
         _gameOverBanner.setAlignment(Pos.CENTER);
         _gameOverBanner.setPadding(new Insets(20));
         _gameOverBanner.setPrefSize((_cols + 1) * _tileSize, (_rows + 1) * _tileSize);
@@ -296,22 +384,15 @@ public class GUI extends Application
 
     /**
      * Shows the game over banner
-     * @param winner who won, or null for a draw
+     * @param headline the result, e.g. "You win!"
+     * @param detail extra explanation (e.g. a forfeit reason), or null for none
      */
-    public void showGameOver(InputHandler.Disc winner)
+    public void showGameOver(String headline, String detail)
     {
-        if (winner == InputHandler.Disc.PLAYER)
-        {
-            _resultLabel.setText("You win!");
-        }
-        else if (winner == InputHandler.Disc.AI)
-        {
-            _resultLabel.setText("The AI wins!");
-        }
-        else
-        {
-            _resultLabel.setText("It's a draw!");
-        }
+        _resultLabel.setText(headline);
+        _detailLabel.setText(detail == null ? "" : detail);
+        _detailLabel.setVisible(detail != null);
+        _detailLabel.setManaged(detail != null); // takes no space when hidden
 
         _gameOverBanner.setVisible(true);
     }
@@ -371,9 +452,9 @@ public class GUI extends Application
             rect.setOnMouseExited(event -> rect.setFill(Color.TRANSPARENT));
 
             rect.setOnMouseClicked(event -> {
-                if (_input.canPlayerMove())
+                if (_input.canHumanMove())
                 {
-                    if (!_input.placeDisc(column))
+                    if (!_input.humanMove(column))
                     {
                         FillTransition flash = new FillTransition(Duration.seconds(0.5), rect);
 
@@ -418,7 +499,7 @@ public class GUI extends Application
                 {
                     // Smooth 1px edge
                     double opacity = Math.min(1.0, radius - dist + 0.5);
-                    Color  color   = ((x + y) < iconSize) ? _playerColor : _AIColor;
+                    Color  color   = ((x + y) < iconSize) ? _redColor : _orangeColor;
 
                     pixelWriter.setColor(x, y, new Color(color.getRed(), color.getGreen(), color.getBlue(), opacity));
                 }
@@ -435,12 +516,12 @@ public class GUI extends Application
      * Creates a disc in the specified location
      * @param row the row coordinate
      * @param col the col coordinate
-     * @param isPlayerDisc true if the disc is a player disc, false otherwise
+     * @param side which side's disc it is
      * @param onLanded runs once the drop animation finishes
      */
-    public void makeDisc(int row, int col, boolean isPlayerDisc, Runnable onLanded)
+    public void makeDisc(int row, int col, InputHandler.Disc side, Runnable onLanded)
     {
-        Disc disc = new Disc(isPlayerDisc);
+        DiscShape disc = new DiscShape(side);
 
         disc.setTranslateX(col * (_tileSize + _colMargin) + _colMargin);
 
@@ -455,33 +536,21 @@ public class GUI extends Application
     }
 
     /**
-     * A representation of the connect four discs that indicate the player
+     * The drawn circle for a disc, colored by side
      */
-    private class Disc extends Circle
+    private class DiscShape extends Circle
     {
-        private final boolean _isPlayerDisc;
-
         /**
-         * Creates a disk to show who went where
-         * @param isPlayerDisc true if player's disc, false if AI's disc
+         * Creates a disc to show who went where
+         * @param side which side's disc it is
          */
-        protected Disc (boolean isPlayerDisc)
+        protected DiscShape(InputHandler.Disc side)
         {
             super((_tileSize / 2.0));
 
-            this._isPlayerDisc = isPlayerDisc;
-
-            setFill(isPlayerDisc ? _playerColor : _AIColor);
+            setFill((side == InputHandler.Disc.RED) ? _redColor : _orangeColor);
             setCenterX(_tileSize / 2.0);
             setCenterY(_tileSize / 2.0);
-        }
-
-        /**
-         * @return true if the disc belongs to the player, false otherwise
-         */
-        public boolean isPlayerDisc()
-        {
-            return this._isPlayerDisc;
         }
     }
 }

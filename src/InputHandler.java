@@ -1,5 +1,3 @@
-import javafx.application.Platform;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -7,37 +5,92 @@ import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
+import OpponentAI.OpponentHarness;
+import javafx.application.Platform;
+
 /**
  * Following Model, View, Controller pattern.
  * InputHandler is the controller that talks to view and model.
+ * .
+ * Two sides play, RED and ORANGE. Each side is either a human clicking columns, or an Agent.
  */
 public class InputHandler
 {
-    public enum Disc { PLAYER, AI }
+    /**
+     * The two sides of the game
+     */
+    public enum Disc
+    {
+        RED, ORANGE;
+
+        /**
+         * @return the other side
+         */
+        public Disc opponent()
+        {
+            return (this == RED) ? ORANGE : RED;
+        }
+
+        /**
+         * @return "Red" or "Yellow"
+         */
+        public String label()
+        {
+            return (this == RED) ? "Red" : "Yellow";
+        }
+    }
+
+    /**
+     * Who plays one side: an agent and its search depth, or a human (agent == null).
+     */
+    public record Side(Agent agent, int depth)
+    {
+        public static Side human()
+        {
+            return new Side(null, 0);
+        }
+
+        public boolean isHuman()
+        {
+            return agent == null;
+        }
+
+        public String name()
+        {
+            return isHuman() ? "Human" : agent.getName();
+        }
+
+        @Override
+        public String toString()
+        {
+            return isHuman() ? "Human" : String.format("%s (d=%d)", name(), depth);
+        }
+    }
 
     private static final int  CONNECT      = 4; // discs in a row needed to win; fixed at 4 per the assignment
     private static final Path RESULTS_FILE = Path.of("results.csv");
-    private static final String RESULTS_HEADER =
-        "timestamp,rows,cols,depth,first_player,result,ai_moves,avg_ai_ms,max_ai_ms";
+    private static final String RESULTS_HEADER = "timestamp,rows,cols,first,"
+        + "red,red_depth,orange,orange_depth,winner,winner_name,forfeit,"
+        + "red_moves,red_avg_ms,red_max_ms,orange_moves,orange_avg_ms,orange_max_ms";
 
-    private int          _rows;
-    private int          _cols;
-    private MinimaxAgent _agent;
-    private boolean      _playerStarts;
+    private int  _rows;
+    private int  _cols;
+    private Side _red;
+    private Side _orange;
+    private Disc _first;
 
-    private boolean _isPlayerTurn;
-    private boolean _isInputLocked; // true while a disc is dropping or the AI is thinking
+    private Disc    _turn;
+    private boolean _isInputLocked; // true while a disc is dropping or an agent is thinking
     private boolean _isGameOver = true; // no game running until startGame() is called
     private int     _discCount;
 
     private Disc[][]  _grid;
     private final GUI _view;
 
-    // stats for the response time log and results file
-    private int  _gameNumber  = 0;
-    private int  _aiMoveCount = 0;
-    private long _aiTotalMs   = 0;
-    private long _aiLongestMs = 0;
+    // stats for the game log and results file
+    private int             _gameNumber  = 0;
+    private final MoveStats _redStats    = new MoveStats();
+    private final MoveStats _orangeStats = new MoveStats();
 
     /**
      * Initializes the input handler. Call startGame() to begin play.
@@ -50,53 +103,64 @@ public class InputHandler
 
     /**
      * Clears the board and starts a new game with the given settings.
-     * If the AI goes first, it is asked for a move immediately.
+     * If an agent moves first, it is asked for a move immediately.
      * @param rows the number of rows
      * @param cols the number of columns
-     * @param agent the AI opponent
-     * @param playerStarts true to start with the player's turn, false to start with the AI's turn
+     * @param red who plays red
+     * @param orange who plays orange
+     * @param first which side moves first
      */
-    public void startGame(int rows, int cols, MinimaxAgent agent, boolean playerStarts)
+    public void startGame(int rows, int cols, Side red, Side orange, Disc first)
     {
         if (rows < CONNECT || cols < CONNECT)
         {
             throw new IllegalArgumentException("InputHandler.startGame: rows and cols must be at least " + CONNECT);
         }
 
-        _rows          = rows;
-        _cols          = cols;
-        _agent         = agent;
-        _playerStarts  = playerStarts;
+        _rows   = rows;
+        _cols   = cols;
+        _red    = red;
+        _orange = orange;
+        _first  = first;
 
         _grid          = new Disc[_rows][_cols];
-        _isPlayerTurn  = _playerStarts;
+        _turn          = _first;
         _isInputLocked = false;
         _isGameOver    = false;
         _discCount     = 0;
 
-        _gameNumber++;
-        _aiMoveCount = 0;
-        _aiTotalMs   = 0;
-        _aiLongestMs = 0;
+        _redStats.reset();
+        _orangeStats.reset();
 
-        _view.log(String.format("=== Game %d | %dx%d | depth %d | %s first ===",
-            _gameNumber, _rows, _cols, _agent.getMaxDepth(), _playerStarts ? "player" : "AI"));
+        // the "=== Game N ===" header is logged at the first move (see logGameHeader),
+        // so games abandoned before any move don't clutter the log
 
-        if (!_isPlayerTurn)
+        if (!side(_turn).isHuman())
         {
-            requestAIMove();
+            requestAgentMove();
         }
 
         _view.refreshSettingsEnabled();
     }
 
     /**
+     * Places a disc for the human whose turn it is.
+     * @param col the column clicked
+     * @return true if the disc was placed, false if the move was rejected (e.g. full column)
+     */
+    public boolean humanMove(int col)
+    {
+        return canHumanMove() && placeDisc(col, -1);
+    }
+
+    /**
      * Finds the location row in which to place the disc in the given column, accounting for gravity.
      * Places the current turn's disc there, then checks for a win/draw once the drop animation finishes.
      * @param col the column to place the disc in
+     * @param elapsedMs how long the agent took to choose this move, or -1 for a human move
      * @return true if the disc was successfully placed, false if the disc could not be placed
      */
-    public boolean placeDisc(int col)
+    private boolean placeDisc(int col, long elapsedMs)
     {
         if (_isGameOver || col < 0 || col >= _cols)
         {
@@ -105,17 +169,25 @@ public class InputHandler
 
         for (int row = (_rows - 1); row >= 0; row--)
         {
-            if (getDisc(row, col) == null)
+            if (_grid[row][col] == null)
             {
-                final int     landedRow    = row;
-                final boolean isPlayerDisc = _isPlayerTurn;
+                final int  landedRow = row;
+                final Disc disc      = _turn;
 
-                _grid[row][col] = isPlayerDisc ? Disc.PLAYER : Disc.AI;
+                if (_discCount == 0)
+                {
+                    logGameHeader();
+                }
+
+                _grid[row][col] = disc;
                 _isInputLocked  = true;
                 _discCount++;
 
+                _view.log(String.format("%2d. %-6s col %2d %9s", _discCount, disc.label(), col,
+                    (elapsedMs < 0) ? "human" : elapsedMs + " ms"));
+
                 _view.refreshSettingsEnabled();
-                _view.makeDisc(row, col, isPlayerDisc, () -> afterDiscLands(landedRow, col, isPlayerDisc));
+                _view.makeDisc(row, col, disc, () -> afterDiscLands(landedRow, col, disc));
 
                 return true;
             }
@@ -125,70 +197,205 @@ public class InputHandler
     }
 
     /**
+     * Numbers the game and logs who is playing. Called when the first disc is placed.
+     */
+    private void logGameHeader()
+    {
+        _gameNumber++;
+
+        _view.log(String.format("=== Game %d | %dx%d | %s first ===", _gameNumber, _rows, _cols, _first.label()));
+        _view.log("Red   : " + _red);
+        _view.log("Orange: " + _orange);
+    }
+
+    /**
      * Runs once a disc finishes dropping: ends the game on a win/draw, otherwise switches turns.
      */
-    private void afterDiscLands(int row, int col, boolean wasPlayerDisc)
+    private void afterDiscLands(int row, int col, Disc disc)
     {
         if (isWinningMove(_grid, row, col))
         {
-            endGame(wasPlayerDisc ? Disc.PLAYER : Disc.AI);
+            endGame(disc, null);
             return;
         }
 
         if (isBoardFull(_grid))
         {
-            endGame(null);
+            endGame(null, null);
             return;
         }
 
-        _isPlayerTurn  = !wasPlayerDisc;
+        _turn          = disc.opponent();
         _isInputLocked = false;
 
-        if (!_isPlayerTurn)
+        if (!side(_turn).isHuman())
         {
-            requestAIMove();
+            requestAgentMove();
         }
     }
 
     /**
-     * Ends the game, logs and saves a summary of the AI's response times, and shows the game over banner
-     * @param winner who won, or null for a draw
+     * Asks the agent whose turn it is for a move on a background thread,
+     * then places its disc back on the JavaFX thread. A crash or invalid column forfeits the game.
      */
-    private void endGame(Disc winner)
+    private void requestAgentMove()
+    {
+        _isInputLocked = true;
+
+        final Disc      me       = _turn;
+        final Agent     agent    = side(me).agent();
+        final MoveStats stats    = stats(me);
+        final Disc[][]  snapshot = copyGrid(_grid);
+
+        Thread thread = new Thread(() -> {
+            int  col;
+            long start = System.nanoTime();
+
+            try
+            {
+                col = agent.chooseColumn(snapshot, me);
+            }
+            catch (Throwable e) // any failure (including StackOverflowError) is a forfeit, not a frozen game
+            {
+                e.printStackTrace();
+                Platform.runLater(() -> endGame(me.opponent(), agent.getName() + " crashed: " + e));
+                return;
+            }
+
+            final int  chosen  = col;
+            final long elapsed = (System.nanoTime() - start) / 1_000_000;
+
+            Platform.runLater(() -> {
+                stats.add(elapsed);
+
+                if (!placeDisc(chosen, elapsed))
+                {
+                    endGame(me.opponent(), agent.getName() + " chose invalid or full column " + chosen);
+                }
+            });
+        }, "agent-move");
+
+        thread.setDaemon(true); // don't keep the app alive if the window closes mid-search
+        thread.start();
+    }
+
+    /**
+     * Ends the game, logs and saves a summary, and shows the game over banner
+     * @param winner who won, or null for a draw
+     * @param forfeitReason why the loser forfeited, or null for a normal finish
+     */
+    private void endGame(Disc winner, String forfeitReason)
     {
         _isGameOver = true;
 
-        String result = (winner == null) ? "Draw" : (winner == Disc.PLAYER) ? "Human win" : "AI win";
-        long   avgMs  = (_aiMoveCount == 0) ? 0 : (_aiTotalMs / _aiMoveCount);
+        if (forfeitReason != null)
+        {
+            _view.log("FORFEIT: " + forfeitReason);
+        }
 
-        _view.log(String.format("%s | %d AI moves | avg %d ms | max %d ms",
-            result, _aiMoveCount, avgMs, _aiLongestMs));
+        _view.log((winner == null) ? "Result: Draw"
+            : String.format("Result: %s wins (%s)", winner.label(), side(winner).name()));
 
-        saveResult(result, avgMs);
+        for (Disc disc : Disc.values())
+        {
+            if (!side(disc).isHuman())
+            {
+                _view.log(String.format("%-6s: %s", disc.label(), stats(disc)));
+            }
+        }
+
+        saveResult(winner, forfeitReason != null);
 
         _view.log("");
-        _view.showGameOver(winner);
+
+        _view.showGameOver(headline(winner), detail(winner, forfeitReason));
         _view.refreshSettingsEnabled();
     }
 
     /**
-     * Appends this game's results as one row of results.csv, writing the header if the file is new.
+     * @return the game over banner's main text
      */
-    private void saveResult(String result, long avgMs)
+    private String headline(Disc winner)
+    {
+        if (winner == null)
+        {
+            return "It's a draw!";
+        }
+
+        Side winnerSide = side(winner);
+        Side loserSide  = side(winner.opponent());
+
+        if (winnerSide.isHuman() && !loserSide.isHuman())
+        {
+            return "You win!";
+        }
+
+        if (!winnerSide.isHuman() && loserSide.isHuman())
+        {
+            return winnerSide.name() + " wins!";
+        }
+
+        return winner.label() + " wins!"; // human vs human or agent vs agent
+    }
+
+    /**
+     * @return the game over banner's smaller text, or null for none
+     */
+    private String detail(Disc winner, String forfeitReason)
+    {
+        String detail = null;
+
+        // agent vs agent: the headline says the color, so name the winner here
+        if (winner != null && !side(winner).isHuman() && !side(winner.opponent()).isHuman())
+        {
+            detail = side(winner).toString();
+        }
+
+        if (forfeitReason != null)
+        {
+            detail = (detail == null) ? forfeitReason : detail + "\n" + forfeitReason;
+        }
+
+        return detail;
+    }
+
+    /**
+     * Appends this game's results as one row of results.csv.
+     * If the file is new, writes the header; if it has an outdated header, it is renamed to keep the old data.
+     */
+    private void saveResult(Disc winner, boolean wasForfeit)
     {
         String row = String.join(",",
             LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
             String.valueOf(_rows),
             String.valueOf(_cols),
-            String.valueOf(_agent.getMaxDepth()),
-            _playerStarts ? "Human" : "AI",
-            result,
-            String.valueOf(_aiMoveCount),
-            String.valueOf(avgMs),
-            String.valueOf(_aiLongestMs));
+            _first.label(),
+            csvSafe(_red.name()),
+            _red.isHuman() ? "" : String.valueOf(_red.depth()),
+            csvSafe(_orange.name()),
+            _orange.isHuman() ? "" : String.valueOf(_orange.depth()),
+            (winner == null) ? "Draw" : winner.label(),
+            (winner == null) ? "" : csvSafe(side(winner).name()),
+            String.valueOf(wasForfeit),
+            statsCells(Disc.RED),
+            statsCells(Disc.ORANGE));
 
         try
         {
+            if (Files.exists(RESULTS_FILE))
+            {
+                String existingHeader = Files.readAllLines(RESULTS_FILE).stream().findFirst().orElse("");
+
+                if (!existingHeader.equals(RESULTS_HEADER))
+                {
+                    Path backup = Path.of("results-old-"
+                        + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + ".csv");
+
+                    Files.move(RESULTS_FILE, backup);
+                    _view.log("Old-format results moved to " + backup);
+                }
+            }
+
             if (Files.notExists(RESULTS_FILE))
             {
                 Files.writeString(RESULTS_FILE, RESULTS_HEADER + System.lineSeparator());
@@ -206,43 +413,52 @@ public class InputHandler
     }
 
     /**
-     * Asks the agent for a move on a background thread, then places its disc back on the JavaFX thread.
+     * @return "moves,avg_ms,max_ms" for an agent side, or three blank cells for a human side
      */
-    private void requestAIMove()
+    private String statsCells(Disc disc)
     {
-        _isInputLocked = true;
+        if (side(disc).isHuman())
+        {
+            return ",,";
+        }
 
-        Disc[][] snapshot = copyGrid(_grid);
+        MoveStats stats = stats(disc);
 
-        Thread aiThread = new Thread(() -> {
-            long start   = System.nanoTime();
-            int  col     = _agent.chooseColumn(snapshot);
-            long elapsed = (System.nanoTime() - start) / 1_000_000;
+        return stats.count + "," + stats.averageMs() + "," + stats.maxMs;
+    }
 
-            Platform.runLater(() -> {
-                _aiMoveCount++;
-                _aiTotalMs  += elapsed;
-                _aiLongestMs = Math.max(_aiLongestMs, elapsed);
+    private Side side(Disc disc)
+    {
+        return (disc == Disc.RED) ? _red : _orange;
+    }
 
-                _view.log(String.format("AI move %2d: col %d  %5d ms", _aiMoveCount, col, elapsed));
-
-                if (!placeDisc(col))
-                {
-                    throw new IllegalStateException("MinimaxAgent chose an invalid or full column: " + col);
-                }
-            });
-        }, "minimax-agent");
-
-        aiThread.setDaemon(true); // don't keep the app alive if the window closes mid-search
-        aiThread.start();
+    private MoveStats stats(Disc disc)
+    {
+        return (disc == Disc.RED) ? _redStats : _orangeStats;
     }
 
     /**
-     * @return true if the player is allowed to place a disc right now
+     * @return the text with characters that would break a CSV cell removed
      */
-    public boolean canPlayerMove()
+    private static String csvSafe(String text)
     {
-        return _isPlayerTurn && !_isInputLocked && !_isGameOver;
+        return text.replaceAll("[,\"\\r\\n]", " ");
+    }
+
+    /**
+     * @return true if a human is allowed to place a disc right now
+     */
+    public boolean canHumanMove()
+    {
+        return !_isGameOver && !_isInputLocked && side(_turn).isHuman();
+    }
+
+    /**
+     * @return true if a game is set up but nobody has moved yet (and no agent is thinking)
+     */
+    public boolean isUnstarted()
+    {
+        return !_isGameOver && _discCount == 0 && !_isInputLocked;
     }
 
     /**
@@ -252,33 +468,6 @@ public class InputHandler
     public boolean canChangeSettings()
     {
         return _isGameOver || (_discCount == 0 && !_isInputLocked);
-    }
-
-    /**
-     * @return true if it is the player's turn, false otherwise
-     */
-    public boolean IsPlayerTurn()
-    {
-        return this._isPlayerTurn;
-    }
-
-    /**
-     * Determines whether the specified location is occupied
-     * @param row the row coordinate
-     * @param col the column coordinate
-     * @return if the slot was selected by the player, AI, or null if it's empty
-     */
-    public Disc getDisc(int row, int col)
-    {
-        if (row < 0
-            || row >= _rows
-            || col < 0
-            || col >= _cols)
-        {
-            throw new IllegalArgumentException("InputHandler.getDisc: row or col outside range");
-        }
-
-        return _grid[row][col];
     }
 
     /**
@@ -365,5 +554,65 @@ public class InputHandler
         }
 
         return copy;
+    }
+
+    /**
+     * Converts the board to the plain-int format OpponentHarness uses.
+     * @param grid the board, grid[row][col]
+     * @param me whose point of view to encode from
+     * @return a new board: OpponentHarness.EMPTY, ME (discs of 'me'), or OTHER
+     */
+    public static int[][] toIntBoard(Disc[][] grid, Disc me)
+    {
+        int[][] board = new int[grid.length][grid[0].length];
+
+        for (int row = 0; row < grid.length; row++)
+        {
+            for (int col = 0; col < grid[0].length; col++)
+            {
+                Disc disc = grid[row][col];
+
+                board[row][col] = (disc == null) ? OpponentHarness.EMPTY
+                                : (disc == me)   ? OpponentHarness.ME
+                                :                  OpponentHarness.OTHER;
+            }
+        }
+
+        return board;
+    }
+
+    /**
+     * Running totals of one side's move times.
+     */
+    private static class MoveStats
+    {
+        int  count;
+        long totalMs;
+        long maxMs;
+
+        void reset()
+        {
+            count   = 0;
+            totalMs = 0;
+            maxMs   = 0;
+        }
+
+        void add(long ms)
+        {
+            count++;
+            totalMs += ms;
+            maxMs    = Math.max(maxMs, ms);
+        }
+
+        long averageMs()
+        {
+            return (count == 0) ? 0 : (totalMs / count);
+        }
+
+        @Override
+        public String toString()
+        {
+            return String.format("%d moves | avg %d ms | max %d ms", count, averageMs(), maxMs);
+        }
     }
 }

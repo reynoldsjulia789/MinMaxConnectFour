@@ -1,5 +1,3 @@
-timestamp,rows,cols,depth,first_player,result,ai_moves,avg_ai_ms,max_ai_ms
-2026-11-10 09:55:16,6,7,4,AI,AI win,4,0,0
-2026-11-10 09:57:06,6,7,4,AI,AI win,4,0,0
-2026-11-10 10:01:54,12,12,12,Human,AI win,4,0,0
-2026-11-10 10:02:17,6,7,12,Human,Human win,3,0,0
+timestamp,rows,cols,first,red,red_depth,orange,orange_depth,winner,winner_name,forfeit,red_moves,red_avg_ms,red_max_ms,orange_moves,orange_avg_ms,orange_max_ms
+2026-11-10 10:37:31,6,7,Red,Human,,Akiva's Agent,4,Orange,Akiva's Agent,false,,,,4,0,0
+2026-11-10 10:41:48,6,7,Red,Human,,Human,,Red,Human,false,,,,,,
