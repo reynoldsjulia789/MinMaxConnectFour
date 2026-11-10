@@ -1,5 +1,12 @@
 import javafx.application.Platform;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
 /**
  * Following Model, View, Controller pattern.
  * InputHandler is the controller that talks to view and model.
@@ -8,70 +15,79 @@ public class InputHandler
 {
     public enum Disc { PLAYER, AI }
 
-    private static final int CONNECT = 4; // discs in a row needed to win
+    private static final int  CONNECT      = 4; // discs in a row needed to win; fixed at 4 per the assignment
+    private static final Path RESULTS_FILE = Path.of("results.csv");
+    private static final String RESULTS_HEADER =
+        "timestamp,rows,cols,depth,first_player,result,ai_moves,avg_ai_ms,max_ai_ms";
 
-    private final int _rows;
-    private final int _cols;
+    private int          _rows;
+    private int          _cols;
+    private MinimaxAgent _agent;
+    private boolean      _playerStarts;
 
-    private final boolean _playerStarts;
-    private boolean       _isPlayerTurn;
-    private boolean       _isInputLocked; // true while a disc is dropping or the AI is thinking
-    private boolean       _isGameOver;
+    private boolean _isPlayerTurn;
+    private boolean _isInputLocked; // true while a disc is dropping or the AI is thinking
+    private boolean _isGameOver = true; // no game running until startGame() is called
+    private int     _discCount;
 
-    // stats for the response time log
-    private int  _gameNumber   = 0;
-    private int  _aiMoveCount  = 0;
-    private long _aiTotalMs    = 0;
-    private long _aiLongestMs  = 0;
+    private Disc[][]  _grid;
+    private final GUI _view;
 
-    private Disc[][]           _grid;
-    private final GUI          _view;
-    private final MinimaxAgent _agent;
+    // stats for the response time log and results file
+    private int  _gameNumber  = 0;
+    private int  _aiMoveCount = 0;
+    private long _aiTotalMs   = 0;
+    private long _aiLongestMs = 0;
 
     /**
      * Initializes the input handler. Call startGame() to begin play.
-     * @param playerStarts true to start with the player's turn, false to start with the AI's turn
-     * @param rows the number of rows
-     * @param cols the number of columns
      * @param view the GUI to draw moves on
-     * @param agent the AI opponent
      */
-    public InputHandler(boolean playerStarts, int rows, int cols, GUI view, MinimaxAgent agent)
+    public InputHandler(GUI view)
     {
-        if (rows < CONNECT && cols < CONNECT)
-        {
-            throw new IllegalArgumentException("InputHandler Constructor: board too small to connect " + CONNECT);
-        }
-
-        this._playerStarts = playerStarts;
-        this._rows         = rows;
-        this._cols         = cols;
-        this._view         = view;
-        this._agent        = agent;
+        this._view = view;
     }
 
     /**
-     * Clears the board and starts a new game. If the AI goes first, it is asked for a move immediately.
+     * Clears the board and starts a new game with the given settings.
+     * If the AI goes first, it is asked for a move immediately.
+     * @param rows the number of rows
+     * @param cols the number of columns
+     * @param agent the AI opponent
+     * @param playerStarts true to start with the player's turn, false to start with the AI's turn
      */
-    public void startGame()
+    public void startGame(int rows, int cols, MinimaxAgent agent, boolean playerStarts)
     {
+        if (rows < CONNECT || cols < CONNECT)
+        {
+            throw new IllegalArgumentException("InputHandler.startGame: rows and cols must be at least " + CONNECT);
+        }
+
+        _rows          = rows;
+        _cols          = cols;
+        _agent         = agent;
+        _playerStarts  = playerStarts;
+
         _grid          = new Disc[_rows][_cols];
         _isPlayerTurn  = _playerStarts;
         _isInputLocked = false;
         _isGameOver    = false;
+        _discCount     = 0;
 
         _gameNumber++;
         _aiMoveCount = 0;
         _aiTotalMs   = 0;
         _aiLongestMs = 0;
 
-        _view.log(String.format("=== Game %d | depth %d | %s first ===",
-            _gameNumber, _agent.getMaxDepth(), _playerStarts ? "player" : "AI"));
+        _view.log(String.format("=== Game %d | %dx%d | depth %d | %s first ===",
+            _gameNumber, _rows, _cols, _agent.getMaxDepth(), _playerStarts ? "player" : "AI"));
 
         if (!_isPlayerTurn)
         {
             requestAIMove();
         }
+
+        _view.refreshSettingsEnabled();
     }
 
     /**
@@ -96,7 +112,9 @@ public class InputHandler
 
                 _grid[row][col] = isPlayerDisc ? Disc.PLAYER : Disc.AI;
                 _isInputLocked  = true;
+                _discCount++;
 
+                _view.refreshSettingsEnabled();
                 _view.makeDisc(row, col, isPlayerDisc, () -> afterDiscLands(landedRow, col, isPlayerDisc));
 
                 return true;
@@ -133,20 +151,58 @@ public class InputHandler
     }
 
     /**
-     * Ends the game, logs a summary of the AI's response times, and shows the game over banner
+     * Ends the game, logs and saves a summary of the AI's response times, and shows the game over banner
      * @param winner who won, or null for a draw
      */
     private void endGame(Disc winner)
     {
         _isGameOver = true;
 
-        String result = (winner == null) ? "Draw" : (winner == Disc.PLAYER) ? "Player wins" : "AI wins";
+        String result = (winner == null) ? "Draw" : (winner == Disc.PLAYER) ? "Human win" : "AI win";
         long   avgMs  = (_aiMoveCount == 0) ? 0 : (_aiTotalMs / _aiMoveCount);
 
-        _view.log(String.format("%s | %d AI moves | avg %d ms | max %d ms%n",
+        _view.log(String.format("%s | %d AI moves | avg %d ms | max %d ms",
             result, _aiMoveCount, avgMs, _aiLongestMs));
 
+        saveResult(result, avgMs);
+
+        _view.log("");
         _view.showGameOver(winner);
+        _view.refreshSettingsEnabled();
+    }
+
+    /**
+     * Appends this game's results as one row of results.csv, writing the header if the file is new.
+     */
+    private void saveResult(String result, long avgMs)
+    {
+        String row = String.join(",",
+            LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
+            String.valueOf(_rows),
+            String.valueOf(_cols),
+            String.valueOf(_agent.getMaxDepth()),
+            _playerStarts ? "Human" : "AI",
+            result,
+            String.valueOf(_aiMoveCount),
+            String.valueOf(avgMs),
+            String.valueOf(_aiLongestMs));
+
+        try
+        {
+            if (Files.notExists(RESULTS_FILE))
+            {
+                Files.writeString(RESULTS_FILE, RESULTS_HEADER + System.lineSeparator());
+            }
+
+            Files.writeString(RESULTS_FILE, row + System.lineSeparator(), StandardOpenOption.APPEND);
+
+            _view.log("Saved to " + RESULTS_FILE);
+            System.out.println("  (" + RESULTS_FILE.toAbsolutePath() + ")"); // full path in the console only
+        }
+        catch (IOException e)
+        {
+            _view.log("ERROR: could not write " + RESULTS_FILE.toAbsolutePath() + ": " + e.getMessage());
+        }
     }
 
     /**
@@ -187,6 +243,15 @@ public class InputHandler
     public boolean canPlayerMove()
     {
         return _isPlayerTurn && !_isInputLocked && !_isGameOver;
+    }
+
+    /**
+     * Settings may only change "between rounds": after a game ends, or before any disc has been placed.
+     * @return true if the game settings can be changed right now
+     */
+    public boolean canChangeSettings()
+    {
+        return _isGameOver || (_discCount == 0 && !_isInputLocked);
     }
 
     /**

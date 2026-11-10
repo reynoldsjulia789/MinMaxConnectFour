@@ -6,25 +6,28 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.Label;
+import javafx.scene.control.Separator;
+import javafx.scene.control.Spinner;
 import javafx.scene.control.TextArea;
-import javafx.scene.layout.Priority;
+import javafx.scene.image.PixelWriter;
+import javafx.scene.image.WritableImage;
 import javafx.scene.layout.Background;
 import javafx.scene.layout.BackgroundFill;
 import javafx.scene.layout.CornerRadii;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
-import javafx.scene.text.Font;
-import javafx.scene.text.FontWeight;
-import javafx.scene.image.PixelWriter;
-import javafx.scene.image.WritableImage;
 import javafx.scene.layout.Pane;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.shape.Shape;
+import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
 import javafx.stage.Stage;
-import javafx.scene.Parent;
 import javafx.util.Duration;
 
 import java.util.ArrayList;
@@ -41,31 +44,53 @@ import java.util.List;
  */
 public class GUI extends Application
 {
-    // sizing
-    private static int   _tileSize  = 80;
-    private static int   _rows      = 6;
-    private static int   _cols      = 7;
+    // default settings (changeable in the window between rounds)
+    private static final int     DEFAULT_ROWS          = 6;
+    private static final int     DEFAULT_COLS          = 7;
+    private static final int     DEFAULT_DEPTH         = 4;
+    private static final boolean DEFAULT_PLAYER_STARTS = true;
 
-    // spacing
-    private static double _colMargin = (double) _tileSize / (_cols + 1);
-    private static double _rowMargin = (double) _tileSize / (_rows + 1);
+    // settings limits
+    private static final int MIN_SIZE  = 4;  // must fit four in a row
+    private static final int MAX_SIZE  = 12;
+    private static final int MIN_DEPTH = 1;
+    private static final int MAX_DEPTH = 12;
+
+    // sizing: tiles shrink on larger boards so the window still fits on screen
+    private static final int MAX_TILE_SIZE    = 80;
+    private static final int MAX_BOARD_WIDTH  = 800;
+    private static final int MAX_BOARD_HEIGHT = 640;
+    private static final int LOG_PANEL_WIDTH  = 440; // fits ~55 monospaced characters per line
 
     // colors: check out Oracle's JavaFX documentation for options
-    private static Color _gridColor    = Color.MIDNIGHTBLUE;
-    private static Color _playerColor  = Color.FIREBRICK;
-    private static Color _AIColor      = Color.ORANGE;
-    private static Color _colHighlight = Color.LIGHTYELLOW;
-    private static Color _errorColor   = Color.RED;
+    private static final Color _gridColor    = Color.MIDNIGHTBLUE;
+    private static final Color _playerColor  = Color.FIREBRICK;
+    private static final Color _AIColor      = Color.ORANGE;
+    private static final Color _colHighlight = Color.LIGHTYELLOW;
+    private static final Color _errorColor   = Color.RED;
 
-    // game settings
-    private static int     _aiDepth      = 4;    // search depth handed to the MinimaxAgent
-    private static boolean _playerStarts = true; // false to let the AI move first
+    // current board geometry (set by applyBoardSize)
+    private int    _rows;
+    private int    _cols;
+    private int    _tileSize;
+    private double _colMargin;
+    private double _rowMargin;
 
     // display
-    private Pane  _discRoot = new Pane();
-    private VBox  _gameOverBanner;
-    private Label _resultLabel;
+    private Stage    _stage;
+    private HBox     _root;
+    private Pane     _discRoot;
+    private VBox     _gameOverBanner;
+    private Label    _resultLabel;
+    private VBox     _sidePanel;
     private TextArea _logArea;
+
+    // settings controls
+    private VBox                _settingsBox;
+    private Spinner<Integer>    _rowsSpinner;
+    private Spinner<Integer>    _colsSpinner;
+    private Spinner<Integer>    _depthSpinner;
+    private ChoiceBox<String>   _firstMoveChoice;
 
     // mechanics
     private InputHandler _input;
@@ -85,54 +110,141 @@ public class GUI extends Application
     @Override
     public void start(Stage stage) throws Exception
     {
-        _input = new InputHandler(_playerStarts, _rows, _cols, this, new MinimaxAgent(_aiDepth));
+        _stage = stage;
+        _input = new InputHandler(this);
+
+        _sidePanel = makeSidePanel();
+        _root      = new HBox(new Pane(), _sidePanel); // placeholder board, replaced by startNewGame()
 
         stage.setTitle("Connect Four with Minimax & Alpha-Beta Pruning");
-        stage.setScene(new Scene(createContent()));
+        stage.setScene(new Scene(_root));
         stage.getIcons().addAll(makeIcon(16), makeIcon(32), makeIcon(64));
         stage.setResizable(false);
 
+        startNewGame();
+
         stage.show();
-
-        _input.startGame();
     }
 
     /**
-     * Creates the content for the stage
+     * Reads the settings controls, rebuilds the board at the chosen size, and starts a new game.
      */
-    private Parent createContent()
+    private void startNewGame()
     {
-        Pane root  = new Pane();
-        Shape grid = makeGrid();
+        int     rows         = _rowsSpinner.getValue();
+        int     cols         = _colsSpinner.getValue();
+        int     depth        = _depthSpinner.getValue();
+        boolean playerStarts = _firstMoveChoice.getValue().equals("Player");
 
-        root.getChildren().add(_discRoot);
-        root.getChildren().add(grid);
-        root.getChildren().addAll(makeColumns());
-        root.getChildren().add(makeGameOverBanner()); // added last so it sits on top of everything
+        applyBoardSize(rows, cols);
 
-        return new HBox(root, makeLogPanel());
+        _root.getChildren().set(0, makeBoard());
+        _sidePanel.setPrefHeight((_rows + 1) * _tileSize);
+        _stage.sizeToScene();
+
+        _input.startGame(rows, cols, new MinimaxAgent(depth), playerStarts);
     }
 
     /**
-     * Creates the side panel that logs AI moves and response times as the game is played
+     * Sets the board dimensions and scales the tiles so the board fits on screen.
+     */
+    private void applyBoardSize(int rows, int cols)
+    {
+        _rows      = rows;
+        _cols      = cols;
+        _tileSize  = Math.min(MAX_TILE_SIZE,
+                     Math.min(MAX_BOARD_HEIGHT / (_rows + 1), MAX_BOARD_WIDTH / (_cols + 1)));
+        _colMargin = (double) _tileSize / (_cols + 1);
+        _rowMargin = (double) _tileSize / (_rows + 1);
+    }
+
+    /**
+     * Creates the board area: discs, grid, clickable columns, and the game over banner on top.
+     * @return the board
+     */
+    private Pane makeBoard()
+    {
+        Pane board = new Pane();
+
+        _discRoot = new Pane();
+
+        board.getChildren().add(_discRoot);
+        board.getChildren().add(makeGrid());
+        board.getChildren().addAll(makeColumns());
+        board.getChildren().add(makeGameOverBanner()); // added last so it sits on top of everything
+
+        return board;
+    }
+
+    /**
+     * Creates the side panel: game settings on top, AI response time log below.
      * @return the panel
      */
-    private VBox makeLogPanel()
+    private VBox makeSidePanel()
     {
-        Label title = new Label("AI Response Times");
-        title.setFont(Font.font("System", FontWeight.BOLD, 16));
+        // settings
+        Label settingsTitle = new Label("Game Settings");
+        settingsTitle.setFont(Font.font("System", FontWeight.BOLD, 16));
+
+        _rowsSpinner     = makeSpinner(MIN_SIZE, MAX_SIZE, DEFAULT_ROWS);
+        _colsSpinner     = makeSpinner(MIN_SIZE, MAX_SIZE, DEFAULT_COLS);
+        _depthSpinner    = makeSpinner(MIN_DEPTH, MAX_DEPTH, DEFAULT_DEPTH);
+        _firstMoveChoice = new ChoiceBox<>();
+        _firstMoveChoice.getItems().addAll("Player", "AI");
+        _firstMoveChoice.setValue(DEFAULT_PLAYER_STARTS ? "Player" : "AI");
+
+        GridPane settingsGrid = new GridPane();
+        settingsGrid.setHgap(10);
+        settingsGrid.setVgap(6);
+        settingsGrid.addRow(0, new Label("Rows (M)"),    _rowsSpinner);
+        settingsGrid.addRow(1, new Label("Columns (N)"), _colsSpinner);
+        settingsGrid.addRow(2, new Label("Depth (d)"),   _depthSpinner);
+        settingsGrid.addRow(3, new Label("First move"),  _firstMoveChoice);
+
+        Button newGame = new Button("New Game");
+        newGame.setOnAction(event -> startNewGame());
+
+        Label hint = new Label("Settings can be changed before the first move or after a game ends.");
+        hint.setWrapText(true);
+        hint.setFont(Font.font(11));
+
+        _settingsBox = new VBox(8, settingsTitle, settingsGrid, newGame, hint);
+
+        // log
+        Label logTitle = new Label("AI Response Times");
+        logTitle.setFont(Font.font("System", FontWeight.BOLD, 16));
 
         _logArea = new TextArea();
         _logArea.setEditable(false); // still selectable, so results can be copied out
         _logArea.setWrapText(true);
-        _logArea.setFont(Font.font("Monospaced", 13));
+        _logArea.setFont(Font.font("Monospaced", 12));
+        _logArea.setMinHeight(120);
         VBox.setVgrow(_logArea, Priority.ALWAYS);
 
-        VBox panel = new VBox(8, title, _logArea);
+        VBox panel = new VBox(8, _settingsBox, new Separator(), logTitle, _logArea);
         panel.setPadding(new Insets(10));
-        panel.setPrefSize(300, (_rows + 1) * _tileSize);
+        panel.setPrefWidth(LOG_PANEL_WIDTH);
+        panel.setMinWidth(LOG_PANEL_WIDTH);
 
         return panel;
+    }
+
+    /**
+     * @return an integer spinner with arrow buttons only (no typing, so values are always valid)
+     */
+    private Spinner<Integer> makeSpinner(int min, int max, int initial)
+    {
+        Spinner<Integer> spinner = new Spinner<>(min, max, initial);
+        spinner.setPrefWidth(80);
+        return spinner;
+    }
+
+    /**
+     * Enables the settings controls only between rounds. Called by InputHandler whenever that may change.
+     */
+    public void refreshSettingsEnabled()
+    {
+        _settingsBox.setDisable(!_input.canChangeSettings());
     }
 
     /**
@@ -158,11 +270,7 @@ public class GUI extends Application
 
         Button playAgain = new Button("Play Again");
         playAgain.setStyle("-fx-font-size: 16px;");
-        playAgain.setOnAction(event -> {
-            _gameOverBanner.setVisible(false);
-            _discRoot.getChildren().clear();
-            _input.startGame();
-        });
+        playAgain.setOnAction(event -> startNewGame()); // uses whatever is in the settings panel
 
         Button exit = new Button("Exit Game");
         exit.setStyle("-fx-font-size: 16px;");
@@ -171,8 +279,13 @@ public class GUI extends Application
         HBox buttons = new HBox(20, playAgain, exit);
         buttons.setAlignment(Pos.CENTER);
 
-        _gameOverBanner = new VBox(25, _resultLabel, buttons);
+        Label settingsHint = new Label("Change board size or depth in the side panel before playing again.");
+        settingsHint.setTextFill(Color.LIGHTGRAY);
+        settingsHint.setWrapText(true);
+
+        _gameOverBanner = new VBox(25, _resultLabel, buttons, settingsHint);
         _gameOverBanner.setAlignment(Pos.CENTER);
+        _gameOverBanner.setPadding(new Insets(20));
         _gameOverBanner.setPrefSize((_cols + 1) * _tileSize, (_rows + 1) * _tileSize);
         _gameOverBanner.setBackground(new Background(
             new BackgroundFill(Color.rgb(0, 0, 0, 0.65), CornerRadii.EMPTY, Insets.EMPTY)));
@@ -346,7 +459,7 @@ public class GUI extends Application
      */
     private class Disc extends Circle
     {
-        private boolean _isPlayerDisc;
+        private final boolean _isPlayerDisc;
 
         /**
          * Creates a disk to show who went where
