@@ -25,3 +25,9 @@ Choose your desired method from the methods outlined below.
 
 ## Known Issues & Limitations
 
+## Citations
+- Connect 4 GUI tutorial:
+    - **Title:** JavaFX Game: Connect4
+    - **Creator:** Almas Biam
+    - **Timestamps:** 0:50 - 7:00, 8:20 - 21:18,
+    - **URL:** https://youtu.be/B5H_t0A_C14?si=PBOI7srskGaINjvI
