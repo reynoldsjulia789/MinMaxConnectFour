@@ -1,7 +1,19 @@
 import javafx.animation.FillTransition;
 import javafx.animation.TranslateTransition;
 import javafx.application.Application;
+import javafx.application.Platform;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Scene;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.layout.Background;
+import javafx.scene.layout.BackgroundFill;
+import javafx.scene.layout.CornerRadii;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.VBox;
+import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
 import javafx.scene.image.PixelWriter;
 import javafx.scene.image.WritableImage;
 import javafx.scene.layout.Pane;
@@ -43,8 +55,14 @@ public class GUI extends Application
     private static Color _colHighlight = Color.LIGHTYELLOW;
     private static Color _errorColor   = Color.RED;
 
+    // game settings
+    private static int     _aiDepth      = 4;    // search depth handed to the MinimaxAgent
+    private static boolean _playerStarts = true; // false to let the AI move first
+
     // display
-    private Pane _discRoot = new Pane();
+    private Pane  _discRoot = new Pane();
+    private VBox  _gameOverBanner;
+    private Label _resultLabel;
 
     // mechanics
     private InputHandler _input;
@@ -64,7 +82,7 @@ public class GUI extends Application
     @Override
     public void start(Stage stage) throws Exception
     {
-        _input = new InputHandler(true, _rows, _cols, this);
+        _input = new InputHandler(_playerStarts, _rows, _cols, this, new MinimaxAgent(_aiDepth));
 
         stage.setTitle("Connect Four with Minimax & Alpha-Beta Pruning");
         stage.setScene(new Scene(createContent()));
@@ -72,6 +90,8 @@ public class GUI extends Application
         stage.setResizable(false);
 
         stage.show();
+
+        _input.startGame();
     }
 
     /**
@@ -85,8 +105,67 @@ public class GUI extends Application
         root.getChildren().add(_discRoot);
         root.getChildren().add(grid);
         root.getChildren().addAll(makeColumns());
+        root.getChildren().add(makeGameOverBanner()); // added last so it sits on top of everything
 
         return root;
+    }
+
+    /**
+     * Creates the (initially hidden) overlay shown when the game ends,
+     * with the result and Play Again / Exit Game buttons.
+     * @return the banner
+     */
+    private VBox makeGameOverBanner()
+    {
+        _resultLabel = new Label();
+        _resultLabel.setFont(Font.font("System", FontWeight.BOLD, 40));
+        _resultLabel.setTextFill(Color.WHITE);
+
+        Button playAgain = new Button("Play Again");
+        playAgain.setStyle("-fx-font-size: 16px;");
+        playAgain.setOnAction(event -> {
+            _gameOverBanner.setVisible(false);
+            _discRoot.getChildren().clear();
+            _input.startGame();
+        });
+
+        Button exit = new Button("Exit Game");
+        exit.setStyle("-fx-font-size: 16px;");
+        exit.setOnAction(event -> Platform.exit());
+
+        HBox buttons = new HBox(20, playAgain, exit);
+        buttons.setAlignment(Pos.CENTER);
+
+        _gameOverBanner = new VBox(25, _resultLabel, buttons);
+        _gameOverBanner.setAlignment(Pos.CENTER);
+        _gameOverBanner.setPrefSize((_cols + 1) * _tileSize, (_rows + 1) * _tileSize);
+        _gameOverBanner.setBackground(new Background(
+            new BackgroundFill(Color.rgb(0, 0, 0, 0.65), CornerRadii.EMPTY, Insets.EMPTY)));
+        _gameOverBanner.setVisible(false);
+
+        return _gameOverBanner;
+    }
+
+    /**
+     * Shows the game over banner
+     * @param winner who won, or null for a draw
+     */
+    public void showGameOver(InputHandler.Disc winner)
+    {
+        if (winner == InputHandler.Disc.PLAYER)
+        {
+            _resultLabel.setText("You win!");
+        }
+        else if (winner == InputHandler.Disc.AI)
+        {
+            _resultLabel.setText("The AI wins!");
+        }
+        else
+        {
+            _resultLabel.setText("It's a draw!");
+        }
+
+        _gameOverBanner.setVisible(true);
     }
 
     /**
@@ -144,7 +223,7 @@ public class GUI extends Application
             rect.setOnMouseExited(event -> rect.setFill(Color.TRANSPARENT));
 
             rect.setOnMouseClicked(event -> {
-                if (_input.IsPlayerTurn())
+                if (_input.canPlayerMove())
                 {
                     if (!_input.placeDisc(column))
                     {
@@ -209,8 +288,9 @@ public class GUI extends Application
      * @param row the row coordinate
      * @param col the col coordinate
      * @param isPlayerDisc true if the disc is a player disc, false otherwise
+     * @param onLanded runs once the drop animation finishes
      */
-    public void makeDisc(int row, int col, boolean isPlayerDisc)
+    public void makeDisc(int row, int col, boolean isPlayerDisc, Runnable onLanded)
     {
         Disc disc = new Disc(isPlayerDisc);
 
@@ -221,6 +301,7 @@ public class GUI extends Application
         TranslateTransition drop = new TranslateTransition(Duration.seconds(0.5), disc);
 
         drop.setToY(row * (_tileSize + _rowMargin) + _rowMargin);
+        drop.setOnFinished(event -> onLanded.run());
 
         drop.play();
     }

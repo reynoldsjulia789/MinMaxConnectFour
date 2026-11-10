@@ -1,3 +1,5 @@
+import javafx.application.Platform;
+
 /**
  * Following Model, View, Controller pattern.
  * InputHandler is the controller that talks to view and model.
@@ -6,57 +8,152 @@ public class InputHandler
 {
     public enum Disc { PLAYER, AI }
 
-    private int _rows;
-    private int _cols;
+    private static final int CONNECT = 4; // discs in a row needed to win
 
-    private boolean  _isPlayerTurn;
-    private Disc[][] _grid;
-    private GUI      _view;
+    private final int _rows;
+    private final int _cols;
+
+    private final boolean _playerStarts;
+    private boolean       _isPlayerTurn;
+    private boolean       _isInputLocked; // true while a disc is dropping or the AI is thinking
+    private boolean       _isGameOver;
+
+    private Disc[][]           _grid;
+    private final GUI          _view;
+    private final MinimaxAgent _agent;
 
     /**
-     * Initializes the input handler
-     * @param isPlayerTurn boolean determining whether to start with the player or AI turn
+     * Initializes the input handler. Call startGame() to begin play.
+     * @param playerStarts true to start with the player's turn, false to start with the AI's turn
      * @param rows the number of rows
      * @param cols the number of columns
+     * @param view the GUI to draw moves on
+     * @param agent the AI opponent
      */
-    public InputHandler(boolean isPlayerTurn, int rows, int cols, GUI view)
+    public InputHandler(boolean playerStarts, int rows, int cols, GUI view, MinimaxAgent agent)
     {
-        if (rows < 0 || cols < 0)
+        if (rows < CONNECT && cols < CONNECT)
         {
-            throw new IllegalArgumentException("InputHandler Constructor: rows/cols can't be negative");
+            throw new IllegalArgumentException("InputHandler Constructor: board too small to connect " + CONNECT);
         }
 
-        this._isPlayerTurn = isPlayerTurn;
-        this._grid         = new Disc[rows][cols];
+        this._playerStarts = playerStarts;
         this._rows         = rows;
         this._cols         = cols;
         this._view         = view;
+        this._agent        = agent;
+    }
+
+    /**
+     * Clears the board and starts a new game. If the AI goes first, it is asked for a move immediately.
+     */
+    public void startGame()
+    {
+        _grid          = new Disc[_rows][_cols];
+        _isPlayerTurn  = _playerStarts;
+        _isInputLocked = false;
+        _isGameOver    = false;
+
+        if (!_isPlayerTurn)
+        {
+            requestAIMove();
+        }
     }
 
     /**
      * Finds the location row in which to place the disc in the given column, accounting for gravity.
+     * Places the current turn's disc there, then checks for a win/draw once the drop animation finishes.
      * @param col the column to place the disc in
      * @return true if the disc was successfully placed, false if the disc could not be placed
      */
     public boolean placeDisc(int col)
     {
-        int row;
+        if (_isGameOver || col < 0 || col >= _cols)
+        {
+            return false;
+        }
 
-        for (row = (_rows - 1); row >= 0; row--)
+        for (int row = (_rows - 1); row >= 0; row--)
         {
             if (getDisc(row, col) == null)
             {
-                _grid[row][col] = (_isPlayerTurn) ? Disc.PLAYER : Disc.AI;
+                final int     landedRow    = row;
+                final boolean isPlayerDisc = _isPlayerTurn;
 
-                _view.makeDisc(row, col, _isPlayerTurn);
+                _grid[row][col] = isPlayerDisc ? Disc.PLAYER : Disc.AI;
+                _isInputLocked  = true;
 
-                // switch turns, trigger AI if AI's turn
+                _view.makeDisc(row, col, isPlayerDisc, () -> afterDiscLands(landedRow, col, isPlayerDisc));
 
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * Runs once a disc finishes dropping: ends the game on a win/draw, otherwise switches turns.
+     */
+    private void afterDiscLands(int row, int col, boolean wasPlayerDisc)
+    {
+        if (isWinningMove(_grid, row, col))
+        {
+            _isGameOver = true;
+            _view.showGameOver(wasPlayerDisc ? Disc.PLAYER : Disc.AI);
+            return;
+        }
+
+        if (isBoardFull(_grid))
+        {
+            _isGameOver = true;
+            _view.showGameOver(null);
+            return;
+        }
+
+        _isPlayerTurn  = !wasPlayerDisc;
+        _isInputLocked = false;
+
+        if (!_isPlayerTurn)
+        {
+            requestAIMove();
+        }
+    }
+
+    /**
+     * Asks the agent for a move on a background thread, then places its disc back on the JavaFX thread.
+     */
+    private void requestAIMove()
+    {
+        _isInputLocked = true;
+
+        Disc[][] snapshot = copyGrid(_grid);
+
+        Thread aiThread = new Thread(() -> {
+            long start   = System.nanoTime();
+            int  col     = _agent.chooseColumn(snapshot);
+            long elapsed = (System.nanoTime() - start) / 1_000_000;
+
+            Platform.runLater(() -> {
+                System.out.printf("AI (depth %d) chose column %d in %d ms%n", _agent.getMaxDepth(), col, elapsed);
+
+                if (!placeDisc(col))
+                {
+                    throw new IllegalStateException("MinimaxAgent chose an invalid or full column: " + col);
+                }
+            });
+        }, "minimax-agent");
+
+        aiThread.setDaemon(true); // don't keep the app alive if the window closes mid-search
+        aiThread.start();
+    }
+
+    /**
+     * @return true if the player is allowed to place a disc right now
+     */
+    public boolean canPlayerMove()
+    {
+        return _isPlayerTurn && !_isInputLocked && !_isGameOver;
     }
 
     /**
@@ -84,5 +181,91 @@ public class InputHandler
         }
 
         return _grid[row][col];
+    }
+
+    /**
+     * Checks whether the disc at (row, col) is part of a line of four or more.
+     * Only lines through that disc are checked, so call it with the most recently placed disc.
+     * @param grid the board, grid[row][col]
+     * @param row the row of the disc just placed
+     * @param col the column of the disc just placed
+     * @return true if that disc completes a win for its owner
+     */
+    public static boolean isWinningMove(Disc[][] grid, int row, int col)
+    {
+        Disc disc = grid[row][col];
+
+        if (disc == null)
+        {
+            return false;
+        }
+
+        // horizontal, vertical, diagonal (down-right), diagonal (down-left)
+        int[][] directions = { {0, 1}, {1, 0}, {1, 1}, {1, -1} };
+
+        for (int[] dir : directions)
+        {
+            int count = 1
+                + countInDirection(grid, row, col,  dir[0],  dir[1], disc)
+                + countInDirection(grid, row, col, -dir[0], -dir[1], disc);
+
+            if (count >= CONNECT)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Counts consecutive matching discs starting one step away from (row, col) in direction (dRow, dCol).
+     */
+    private static int countInDirection(Disc[][] grid, int row, int col, int dRow, int dCol, Disc disc)
+    {
+        int count = 0;
+        int r     = row + dRow;
+        int c     = col + dCol;
+
+        while (r >= 0 && r < grid.length && c >= 0 && c < grid[0].length && grid[r][c] == disc)
+        {
+            count++;
+            r += dRow;
+            c += dCol;
+        }
+
+        return count;
+    }
+
+    /**
+     * @param grid the board, grid[row][col]
+     * @return true if every column is full (a draw, assuming nobody has won)
+     */
+    public static boolean isBoardFull(Disc[][] grid)
+    {
+        for (int col = 0; col < grid[0].length; col++)
+        {
+            if (grid[0][col] == null)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @return a deep copy of the given board
+     */
+    public static Disc[][] copyGrid(Disc[][] grid)
+    {
+        Disc[][] copy = new Disc[grid.length][];
+
+        for (int row = 0; row < grid.length; row++)
+        {
+            copy[row] = grid[row].clone();
+        }
+
+        return copy;
     }
 }

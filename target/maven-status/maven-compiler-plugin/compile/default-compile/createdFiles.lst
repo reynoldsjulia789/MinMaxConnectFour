@@ -1,5 +1,6 @@
 Launcher.class
 InputHandler$Disc.class
+MinimaxAgent.class
 GUI$Disc.class
 GUI.class
 InputHandler.class
