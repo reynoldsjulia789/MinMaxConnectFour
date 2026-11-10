@@ -1,3 +1,4 @@
 timestamp,rows,cols,first,red,red_depth,orange,orange_depth,winner,winner_name,forfeit,red_moves,red_avg_ms,red_max_ms,orange_moves,orange_avg_ms,orange_max_ms
 2026-11-10 10:37:31,6,7,Red,Human,,Akiva's Agent,4,Orange,Akiva's Agent,false,,,,4,0,0
 2026-11-10 10:41:48,6,7,Red,Human,,Human,,Red,Human,false,,,,,,
+2026-11-10 10:47:53,6,7,Red,Human,,Opponent AI,4,Red,Human,false,,,,8,0,0

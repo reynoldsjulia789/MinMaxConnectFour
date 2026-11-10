@@ -141,6 +141,7 @@ public class InputHandler
         }
 
         _view.refreshSettingsEnabled();
+        _view.refreshHoverPreview();
     }
 
     /**
@@ -187,6 +188,7 @@ public class InputHandler
                     (elapsedMs < 0) ? "human" : elapsedMs + " ms"));
 
                 _view.refreshSettingsEnabled();
+                _view.refreshHoverPreview(); // hide while the disc drops
                 _view.makeDisc(row, col, disc, () -> afterDiscLands(landedRow, col, disc));
 
                 return true;
@@ -232,6 +234,8 @@ public class InputHandler
         {
             requestAgentMove();
         }
+
+        _view.refreshHoverPreview(); // next human's color, or hidden if an agent is up
     }
 
     /**
@@ -310,6 +314,7 @@ public class InputHandler
 
         _view.showGameOver(headline(winner), detail(winner, forfeitReason));
         _view.refreshSettingsEnabled();
+        _view.refreshHoverPreview();
     }
 
     /**
@@ -451,6 +456,23 @@ public class InputHandler
     public boolean canHumanMove()
     {
         return !_isGameOver && !_isInputLocked && side(_turn).isHuman();
+    }
+
+    /**
+     * @return the side whose turn it is
+     */
+    public Disc getTurn()
+    {
+        return _turn;
+    }
+
+    /**
+     * @param col a column index
+     * @return true if the column has no empty slots
+     */
+    public boolean isColumnFull(int col)
+    {
+        return _grid[0][col] != null;
     }
 
     /**

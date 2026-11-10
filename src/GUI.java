@@ -84,6 +84,8 @@ public class GUI extends Application
     private Stage    _stage;
     private HBox     _root;
     private Pane     _discRoot;
+    private Circle   _previewDisc;      // half-inserted disc above the hovered column
+    private int      _hoveredCol = -1;  // -1 when the mouse isn't over a column
     private VBox     _gameOverBanner;
     private Label    _resultLabel;
     private Label    _detailLabel;
@@ -189,7 +191,15 @@ public class GUI extends Application
 
         _discRoot = new Pane();
 
+        // preview sits behind the grid like real discs, so only its lower half shows through the top hole
+        _previewDisc = new DiscShape(InputHandler.Disc.RED);
+        _previewDisc.setOpacity(0.75);
+        _previewDisc.setMouseTransparent(true);
+        _previewDisc.setVisible(false);
+        _hoveredCol = -1;
+
         board.getChildren().add(_discRoot);
+        board.getChildren().add(_previewDisc);
         board.getChildren().add(makeGrid());
         board.getChildren().addAll(makeColumns());
         board.getChildren().add(makeGameOverBanner()); // added last so it sits on top of everything
@@ -329,6 +339,26 @@ public class GUI extends Application
     }
 
     /**
+     * Shows a half-inserted disc in the current player's color above the hovered column,
+     * only when a human can drop a disc there. Called on hover changes and by InputHandler on turn changes.
+     */
+    public void refreshHoverPreview()
+    {
+        boolean show = _hoveredCol >= 0
+            && _input.canHumanMove()
+            && !_input.isColumnFull(_hoveredCol);
+
+        _previewDisc.setVisible(show);
+
+        if (show)
+        {
+            _previewDisc.setFill((_input.getTurn() == InputHandler.Disc.RED) ? _redColor : _orangeColor);
+            _previewDisc.setTranslateX(_hoveredCol * (_tileSize + _colMargin) + _colMargin);
+            _previewDisc.setTranslateY(_rowMargin - (_tileSize / 2.0)); // half above the top slot
+        }
+    }
+
+    /**
      * Adds a line to the side log panel and prints it to the console
      * @param line the text to log
      */
@@ -448,8 +478,17 @@ public class GUI extends Application
             rect.setOnMouseEntered(event -> {
                 rect.setFill(_colHighlight);
                 rect.setOpacity(0.5);
+                _hoveredCol = column;
+                refreshHoverPreview();
             });
-            rect.setOnMouseExited(event -> rect.setFill(Color.TRANSPARENT));
+            rect.setOnMouseExited(event -> {
+                rect.setFill(Color.TRANSPARENT);
+                if (_hoveredCol == column)
+                {
+                    _hoveredCol = -1;
+                }
+                refreshHoverPreview();
+            });
 
             rect.setOnMouseClicked(event -> {
                 if (_input.canHumanMove())
