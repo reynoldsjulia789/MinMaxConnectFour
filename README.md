@@ -5,7 +5,8 @@
 ### Specs:
 - Language: Java
 - Version: 25.0.5
-- Dependencies: JavaFX, version ...
+- Dependencies:
+    - JavaFX, version: 25
 
 ## How to Run
 Choose your desired method from the methods outlined below.
