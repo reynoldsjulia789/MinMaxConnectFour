@@ -1,3 +1,5 @@
+import javafx.animation.FillTransition;
+import javafx.animation.TranslateTransition;
 import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.scene.image.PixelWriter;
@@ -9,15 +11,19 @@ import javafx.scene.shape.Rectangle;
 import javafx.scene.shape.Shape;
 import javafx.stage.Stage;
 import javafx.scene.Parent;
+import javafx.util.Duration;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * GUI created in part by following this tutorial:
+ * GUI created by following this tutorial, modifications made to fit needs:
  * JavaFX Game: Connect4 by Almas Biam,
- * Timestamps: 0:50 - 7:00, 8:20 - ,
+ * Timestamps: 0:50 - 7:00, 8:20 - 21:18,
  * URL: https://youtu.be/B5H_t0A_C14?si=PBOI7srskGaINjvI
+ * .
+ * Following Model, View, Controller pattern.
+ * GUI handles display(view)
  */
 public class GUI extends Application
 {
@@ -35,6 +41,13 @@ public class GUI extends Application
     private static Color _playerColor  = Color.FIREBRICK;
     private static Color _AIColor      = Color.ORANGE;
     private static Color _colHighlight = Color.LIGHTYELLOW;
+    private static Color _errorColor   = Color.RED;
+
+    // display
+    private Pane _discRoot = new Pane();
+
+    // mechanics
+    private InputHandler _input;
 
     /**
      * Main method
@@ -51,6 +64,8 @@ public class GUI extends Application
     @Override
     public void start(Stage stage) throws Exception
     {
+        _input = new InputHandler(true, _rows, _cols, this);
+
         stage.setTitle("Connect Four with Minimax & Alpha-Beta Pruning");
         stage.setScene(new Scene(createContent()));
         stage.getIcons().addAll(makeIcon(16), makeIcon(32), makeIcon(64));
@@ -67,6 +82,7 @@ public class GUI extends Application
         Pane root  = new Pane();
         Shape grid = makeGrid();
 
+        root.getChildren().add(_discRoot);
         root.getChildren().add(grid);
         root.getChildren().addAll(makeColumns());
 
@@ -114,7 +130,8 @@ public class GUI extends Application
 
         for (int col = 0; col < _cols; col++)
         {
-            Rectangle rect = new Rectangle((_tileSize), ((_rows + 1) * _tileSize));
+            final int column = col; // for disc placement by player
+            Rectangle rect   = new Rectangle((_tileSize), ((_rows + 1) * _tileSize));
 
             rect.setTranslateX(col * (_tileSize + _colMargin) + _colMargin);
 
@@ -125,6 +142,23 @@ public class GUI extends Application
                 rect.setOpacity(0.5);
             });
             rect.setOnMouseExited(event -> rect.setFill(Color.TRANSPARENT));
+
+            rect.setOnMouseClicked(event -> {
+                if (_input.IsPlayerTurn())
+                {
+                    if (!_input.placeDisc(column))
+                    {
+                        FillTransition flash = new FillTransition(Duration.seconds(0.5), rect);
+
+                        flash.setFromValue(Color.TRANSPARENT);
+                        flash.setToValue(_errorColor);
+                        flash.setAutoReverse(true);
+                        flash.setCycleCount(2);
+
+                        flash.play();
+                    }
+                }
+            });
 
             colList.add(rect);
         }
@@ -168,5 +202,57 @@ public class GUI extends Application
             }
         }
         return icon;
+    }
+
+    /**
+     * Creates a disc in the specified location
+     * @param row the row coordinate
+     * @param col the col coordinate
+     * @param isPlayerDisc true if the disc is a player disc, false otherwise
+     */
+    public void makeDisc(int row, int col, boolean isPlayerDisc)
+    {
+        Disc disc = new Disc(isPlayerDisc);
+
+        disc.setTranslateX(col * (_tileSize + _colMargin) + _colMargin);
+
+        _discRoot.getChildren().add(disc);
+
+        TranslateTransition drop = new TranslateTransition(Duration.seconds(0.5), disc);
+
+        drop.setToY(row * (_tileSize + _rowMargin) + _rowMargin);
+
+        drop.play();
+    }
+
+    /**
+     * A representation of the connect four discs that indicate the player
+     */
+    private class Disc extends Circle
+    {
+        private boolean _isPlayerDisc;
+
+        /**
+         * Creates a disk to show who went where
+         * @param isPlayerDisc true if player's disc, false if AI's disc
+         */
+        protected Disc (boolean isPlayerDisc)
+        {
+            super((_tileSize / 2.0));
+
+            this._isPlayerDisc = isPlayerDisc;
+
+            setFill(isPlayerDisc ? _playerColor : _AIColor);
+            setCenterX(_tileSize / 2.0);
+            setCenterY(_tileSize / 2.0);
+        }
+
+        /**
+         * @return true if the disc belongs to the player, false otherwise
+         */
+        public boolean isPlayerDisc()
+        {
+            return this._isPlayerDisc;
+        }
     }
 }
