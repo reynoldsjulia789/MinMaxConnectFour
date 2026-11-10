@@ -22,6 +22,9 @@ public class JuliaAgent implements Agent
         this._maxDepth = maxDepth;
     }
 
+    /**
+     * @return the name shown in the game log, results.csv, and the game over banner
+     */
     @Override
     public String getName()
     {
@@ -39,6 +42,7 @@ public class JuliaAgent implements Agent
     {
         // TODO: replace with Minimax + Alpha-Beta Pruning, limited to _maxDepth.
         // PLACEHOLDER so the game is playable end-to-end: picks the leftmost column that isn't full.
+        // scan columns left to right; a column has room if its top slot (row 0) is empty
         for (int col = 0; col < board[0].length; col++)
         {
             if (board[0][col] == null)

@@ -20,7 +20,8 @@ public interface Agent
      * (e.g. place a disc, recurse, then remove it).
      * .
      * Board layout: board[row][col], where row 0 is the TOP row and gravity pulls toward the last row.
-     * Each slot is null (empty), Disc.RED, or Disc.ORANGE. Use board.length and board[0].length for the size.
+     * Each slot is null (empty), Disc.RED, or Disc.YELLOW.
+     * Use board.length and board[0].length for the size.
      * .
      * Helpers:
      *  - me.opponent(): the other side's color

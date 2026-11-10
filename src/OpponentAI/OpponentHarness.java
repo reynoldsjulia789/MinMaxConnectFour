@@ -13,7 +13,7 @@ import java.util.Random;
  *     (or keep its own package and put it in the matching folder under src/, then import it here).
  *  2. Create it in the constructor below.
  *  3. In chooseColumn(), convert the board to whatever format it expects, call it, and return its column.
- *  4. Run the game and pick "Opponent Harness" for Red or Orange in the Game Settings panel.
+ *  4. Run the game and pick "Opponent Harness" for Red or Yellow in the Game Settings panel.
  * .
  * The game handles everything else: turns, timing, win detection, and logging results.
  * If the opponent throws an exception or returns an invalid column, it forfeits the game.
@@ -27,7 +27,7 @@ public class OpponentHarness
 
     public static final int CONNECT  = 4; // discs in a row needed to win, on every board size
 
-    private final int _depth;
+    private final int _depth; // unused by the placeholder; pass it to the plugged-in AI
 
     // PLACEHOLDER opponent: random legal column. Remove once a real AI is plugged in.
     private final Random _random = new Random();
@@ -74,6 +74,7 @@ public class OpponentHarness
         // PLACEHOLDER: random legal column
         List<Integer> legal = new ArrayList<>();
 
+        // collect every column whose top slot (row 0) is still empty
         for (int col = 0; col < board[0].length; col++)
         {
             if (board[0][col] == EMPTY)
@@ -82,6 +83,7 @@ public class OpponentHarness
             }
         }
 
+        // nextInt(n) picks a random index from 0 to n - 1
         return legal.get(_random.nextInt(legal.size()));
     }
 }
