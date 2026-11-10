@@ -18,6 +18,12 @@ public class InputHandler
     private boolean       _isInputLocked; // true while a disc is dropping or the AI is thinking
     private boolean       _isGameOver;
 
+    // stats for the response time log
+    private int  _gameNumber   = 0;
+    private int  _aiMoveCount  = 0;
+    private long _aiTotalMs    = 0;
+    private long _aiLongestMs  = 0;
+
     private Disc[][]           _grid;
     private final GUI          _view;
     private final MinimaxAgent _agent;
@@ -53,6 +59,14 @@ public class InputHandler
         _isPlayerTurn  = _playerStarts;
         _isInputLocked = false;
         _isGameOver    = false;
+
+        _gameNumber++;
+        _aiMoveCount = 0;
+        _aiTotalMs   = 0;
+        _aiLongestMs = 0;
+
+        _view.log(String.format("=== Game %d | depth %d | %s first ===",
+            _gameNumber, _agent.getMaxDepth(), _playerStarts ? "player" : "AI"));
 
         if (!_isPlayerTurn)
         {
@@ -99,15 +113,13 @@ public class InputHandler
     {
         if (isWinningMove(_grid, row, col))
         {
-            _isGameOver = true;
-            _view.showGameOver(wasPlayerDisc ? Disc.PLAYER : Disc.AI);
+            endGame(wasPlayerDisc ? Disc.PLAYER : Disc.AI);
             return;
         }
 
         if (isBoardFull(_grid))
         {
-            _isGameOver = true;
-            _view.showGameOver(null);
+            endGame(null);
             return;
         }
 
@@ -118,6 +130,23 @@ public class InputHandler
         {
             requestAIMove();
         }
+    }
+
+    /**
+     * Ends the game, logs a summary of the AI's response times, and shows the game over banner
+     * @param winner who won, or null for a draw
+     */
+    private void endGame(Disc winner)
+    {
+        _isGameOver = true;
+
+        String result = (winner == null) ? "Draw" : (winner == Disc.PLAYER) ? "Player wins" : "AI wins";
+        long   avgMs  = (_aiMoveCount == 0) ? 0 : (_aiTotalMs / _aiMoveCount);
+
+        _view.log(String.format("%s | %d AI moves | avg %d ms | max %d ms%n",
+            result, _aiMoveCount, avgMs, _aiLongestMs));
+
+        _view.showGameOver(winner);
     }
 
     /**
@@ -135,7 +164,11 @@ public class InputHandler
             long elapsed = (System.nanoTime() - start) / 1_000_000;
 
             Platform.runLater(() -> {
-                System.out.printf("AI (depth %d) chose column %d in %d ms%n", _agent.getMaxDepth(), col, elapsed);
+                _aiMoveCount++;
+                _aiTotalMs  += elapsed;
+                _aiLongestMs = Math.max(_aiLongestMs, elapsed);
+
+                _view.log(String.format("AI move %2d: col %d  %5d ms", _aiMoveCount, col, elapsed));
 
                 if (!placeDisc(col))
                 {

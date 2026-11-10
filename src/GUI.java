@@ -7,6 +7,8 @@ import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.TextArea;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.Background;
 import javafx.scene.layout.BackgroundFill;
 import javafx.scene.layout.CornerRadii;
@@ -63,6 +65,7 @@ public class GUI extends Application
     private Pane  _discRoot = new Pane();
     private VBox  _gameOverBanner;
     private Label _resultLabel;
+    private TextArea _logArea;
 
     // mechanics
     private InputHandler _input;
@@ -107,7 +110,39 @@ public class GUI extends Application
         root.getChildren().addAll(makeColumns());
         root.getChildren().add(makeGameOverBanner()); // added last so it sits on top of everything
 
-        return root;
+        return new HBox(root, makeLogPanel());
+    }
+
+    /**
+     * Creates the side panel that logs AI moves and response times as the game is played
+     * @return the panel
+     */
+    private VBox makeLogPanel()
+    {
+        Label title = new Label("AI Response Times");
+        title.setFont(Font.font("System", FontWeight.BOLD, 16));
+
+        _logArea = new TextArea();
+        _logArea.setEditable(false); // still selectable, so results can be copied out
+        _logArea.setWrapText(true);
+        _logArea.setFont(Font.font("Monospaced", 13));
+        VBox.setVgrow(_logArea, Priority.ALWAYS);
+
+        VBox panel = new VBox(8, title, _logArea);
+        panel.setPadding(new Insets(10));
+        panel.setPrefSize(300, (_rows + 1) * _tileSize);
+
+        return panel;
+    }
+
+    /**
+     * Adds a line to the side log panel and prints it to the console
+     * @param line the text to log
+     */
+    public void log(String line)
+    {
+        System.out.println(line);
+        _logArea.appendText(line + "\n");
     }
 
     /**
