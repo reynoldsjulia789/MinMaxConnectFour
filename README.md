@@ -6,23 +6,20 @@
 - Language: Java
 - Version: 25.0.5
 - Dependencies:
-    - JavaFX, version: 25
+    - JavaFX, version: 25.0.1
+    - Maven, model version: 4.0.0
 
 ## How to Run
 Choose your desired method from the methods outlined below.
 
 ### Command Line
+1. Ensure you have maven downloaded. If not, visit https://maven.apache.org/ and download the latest version
+2. ...
 
 ### IntelliJ
-1. Ensure you have Java and JavaFX, and that the project can reference them.
-    - To add a library to an IntelliJ project:
-        1. Go to File and click Project Structure
-        2. Locate and select the Libraries tab
-        3. Click the + button, then select Java
-        4. Browse for the folder on your machine containing JavaFX, and select the lib folder
-        5. Apply your changes
-    - You can follow the above steps to add any necessary libraries
-2. ...
+1. Ensure you have Java and the IntelliJ Maven plugin
+2. Locate Launcher.java in src
+3. Click the green play button
 
 ## Known Issues & Limitations
 
