@@ -25,6 +25,10 @@ mvn javafx:run     # build and launch the game
 
 There are no command-line parameters or configuration files; everything is set in the window.
 
+**Jar file:** Whether the repo was cloned or the jar file was downloaded separately, open the cli. 
+From the location of the Jar file, run `java -jar ./MinimaxConnectFour.jar`. 
+Note that the Opponent Harness is not available via the jar file.
+
 ## How to Play
 
 - By default you play **Red** against **Akiva's Agent** playing **Yellow**, on a 6 × 7 board, with Red moving first.
