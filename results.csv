@@ -1,0 +1,10 @@
+timestamp,rows,cols,first,red,red_depth,yellow,yellow_depth,winner,winner_name,forfeit,red_moves,red_avg_ms,red_max_ms,yellow_moves,yellow_avg_ms,yellow_max_ms
+2026-11-10 12:12:01,6,7,Red,Human,,Human,,Red,Human,false,,,,,,
+2026-11-10 12:26:14,6,7,Red,Human,,Julia's Agent,4,Red,Human,false,,,,6,0,0
+2026-11-10 12:27:44,6,7,Yellow,Human,,Julia's Agent,4,Red,Human,false,,,,6,0,0
+2026-11-10 14:27:08,10,12,Red,Human,,Akiva's Agent,4,Red,Human,false,,,,13,0,0
+2026-11-10 16:17:25,6,7,Red,Human,,Human,,Yellow,Human,false,,,,,,
+2026-11-10 16:41:29,6,7,Red,Human,,Akiva's Agent,4,Red,Human,false,,,,3,0,0
+2026-11-10 19:13:20,6,7,Red,Human,,Julia's Agent,4,Yellow,Julia's Agent,false,,,,11,0,3
+2026-11-10 19:14:17,6,7,Red,Human,,Julia's Agent,12,Yellow,Julia's Agent,false,,,,8,2120,5766
+2026-11-10 19:14:47,6,7,Red,Human,,Julia's Agent,1,Yellow,Julia's Agent,false,,,,9,0,0
